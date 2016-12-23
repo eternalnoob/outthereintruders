@@ -27,7 +27,17 @@ def get_sprites():
     sprite_locs.append((160, 15, 115, 80))
     sprite_locs.append((310, 15, 85, 80))
     images = invaders_sheet.images_at(sprite_locs, colorkey=(0,0,0,0))
-    return images
+
+    projectile = []
+    project_sheet = Sheet('projectile.png')
+    for y in range(0,128,32):
+        for x in project_sheet.load_strip((0, y, 32, 32), 4, colorkey=(0,0,0,0)):
+            projectile.append(x)
+
+    for x in project_sheet.load_strip((0, 128, 32, 32), 1, colorkey=(0,0,0,0)):
+        projectile.append(x)
+
+    return {"chars": images, "projspr": projectile}
 
 def check_pressed():
     pressed = pygame.key.get_pressed()
@@ -45,7 +55,7 @@ def check_pressed():
 
 
 class Player(Sprite):
-    def __init__(self, image=spriteimg, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=40):
+    def __init__(self, image=spriteimg, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=60):
         pygame.sprite.Sprite.__init__(self)
         self.x = x
         self.y = y
@@ -68,6 +78,15 @@ class Player(Sprite):
 
     def getpos(self):
         return (self.rect.x, self.rec.y)
+
+    @property
+    def middle(self):
+        return self.rect.x
+
+    @property
+    def top(self):
+        return self.rect.y - self.rect.height/2
+
 
 
 class Invader(Sprite):
@@ -93,6 +112,31 @@ class Invader(Sprite):
     def getpos(self):
         return (self.x, self.y)
 
+class Projectile(Sprite):
+    def __init__(self, spritepack=None, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=80):
+        pygame.sprite.Sprite.__init__(self)
+        self.scale = scale
+        print(scale)
+        self.sprites = []
+        for img in spritepack:
+            self.sprites.append(pygame.transform.scale(img, (int(img.get_rect().width*self.scale), int(img.get_rect(
+            ).height*self.scale))))
+        self.max_x = max_x
+        self.max_y = max_y
+        self.rect = self.sprites[0].get_rect()
+        self.y = y
+        self.x = y
+        self.rect.x = x
+        self.rect.y = y
+        self.count = 0
+        self.movespeed = movespeed
+
+    def update(self, delta):
+        self.image = self.sprites[self.count % len(self.sprites)]
+        self.y -= self.movespeed * (delta/1000) * self.scale
+        self.rect.y = int(self.y)
+        self.count += 1
+
 class GameState(object):
     def __init__(self):
         self.displaySize = (DEFAULT_WIDTH,DEFAULT_HEIGHT)
@@ -100,7 +144,7 @@ class GameState(object):
         self.aliens = pygame.sprite.RenderUpdates()
         self.display = None
         self.bg = None
-        self.sprites = None
+        self.charsprites = None
         self.rows = 5
         self.cols = 7
         self.clock = pygame.time.Clock()
@@ -118,10 +162,13 @@ class Game(GameState):
         self.aliens = pygame.sprite.RenderUpdates()
         self.bg = pygame.Surface(self.displaySize)
         self.bg.fill(black)
-        self.sprites = get_sprites()
+        sprites = get_sprites()
+        self.charsprites = sprites['chars']
+        self.projsprites = sprites['projspr']
         self.player = None
         self.pg = pygame.sprite.RenderUpdates()
         self.allsprites = pygame.sprite.RenderUpdates()
+        self.playerprj = pygame.sprite.RenderUpdates()
 
     def loop(self):
         self.move_aliens()
@@ -134,13 +181,20 @@ class Game(GameState):
                     pygame.display.update()
                 elif event.type == UPDATE_GAME:
                     self.move_aliens()
-            self.update_player()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        prj = Projectile(spritepack=self.projsprites,
+                                         x=self.player.middle,
+                                         y=self.player.top,
+                                         scale=self.player.scale)
+                        prj.add(self.playerprj)
 
+            self.update_projectile()
+            self.update_player()
             #self.player.update(delta=self.clock.get_time())
 
             self.clock.tick()
             pygame.time.wait(20)
-            print(self.player.rect)
 
     def run(self):
         self.setup_sprites()
@@ -152,6 +206,12 @@ class Game(GameState):
         pygame.display.update(self.pg.draw(self.display))
 
 
+    def update_projectile(self):
+        self.playerprj.clear(self.display, self.bg)
+        self.playerprj.update(self.clock.get_time())
+        pygame.display.update(self.playerprj.draw(self.display))
+        pygame.sprite.groupcollide(self.playerprj, self.aliens, True, True, collided=pygame.sprite.collide_mask)
+
     def move_aliens(self):
         self.aliens.clear(self.display, self.bg)
         self.aliens.update()
@@ -160,7 +220,7 @@ class Game(GameState):
 
     def setup_sprites(self):
         self.player = Player(x=self.displaySize[0]//2, y=self.displaySize[1]//2*1.7,
-                             image=self.sprites[2], max_x=self.displaySize[0], max_y=self.displaySize[1],
+                             image=self.charsprites[2], max_x=self.displaySize[0], max_y=self.displaySize[1],
                              scale=self.scale)
         self.player.add(self.pg)
         self.player.add(self.allsprites)
@@ -171,7 +231,7 @@ class Game(GameState):
                     actualx = x + 75
                 else:
                     actualx = x
-                invader1 = Invader(image=self.sprites[0],
+                invader1 = Invader(image=self.charsprites[0],
                                    y=y,
                                    scale=self.scale,
                                    x=actualx,
