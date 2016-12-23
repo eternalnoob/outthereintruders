@@ -45,12 +45,14 @@ def check_pressed():
 
 
 class Player(Sprite):
-    def __init__(self, image = spriteimg, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=40):
+    def __init__(self, image=spriteimg, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=40):
         pygame.sprite.Sprite.__init__(self)
         self.x = x
         self.y = y
         self.scale = scale
         self.image = image
+        self.max_x = max_x
+        self.max_y = max_y
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -59,10 +61,13 @@ class Player(Sprite):
     def update(self, delta):
         x, y = check_pressed()
         if not (x is 0 and y is 0):
-            self.x += x * self.movespeed * (delta/1000)
-            self.y += y * self.movespeed * (delta/1000)
+            self.x += x * self.movespeed * (delta/1000) * self.scale
+            self.y += y * self.movespeed * (delta/1000) * self.scale
             self.rect.x = int(self.x)
             self.rect.y = int(self.y)
+
+    def getpos(self):
+        return (self.rect.x, self.rec.y)
 
 
 class Invader(Sprite):
@@ -100,6 +105,7 @@ class GameState(object):
         self.cols = 7
         self.clock = pygame.time.Clock()
         self.scale = 3
+        self.pg = pygame.sprite.RenderUpdates()
 
 class Game(GameState):
     def __init__(self):
@@ -115,9 +121,11 @@ class Game(GameState):
         self.sprites = get_sprites()
         self.player = None
         self.pg = pygame.sprite.RenderUpdates()
+        self.allsprites = pygame.sprite.RenderUpdates()
 
     def loop(self):
         self.move_aliens()
+        self.update_player()
         while True:
             for event in pygame.event.get():
                 if event.type == QUIT:
@@ -126,9 +134,9 @@ class Game(GameState):
                     pygame.display.update()
                 elif event.type == UPDATE_GAME:
                     self.move_aliens()
+            self.update_player()
 
             #self.player.update(delta=self.clock.get_time())
-            self.update_player()
 
             self.clock.tick()
             pygame.time.wait(20)
@@ -151,9 +159,11 @@ class Game(GameState):
         pygame.time.set_timer(UPDATE_GAME, 500)
 
     def setup_sprites(self):
-        self.player = Player(x=self.displaySize[0]//2, y=self.displaySize[1],
-                             image=self.sprites[0])
+        self.player = Player(x=self.displaySize[0]//2, y=self.displaySize[1]//2*1.7,
+                             image=self.sprites[2], max_x=self.displaySize[0], max_y=self.displaySize[1],
+                             scale=self.scale)
         self.player.add(self.pg)
+        self.player.add(self.allsprites)
         offset = False
         for y in range(0, min(self.rows*base_sprite_y, self.displaySize[1]), base_sprite_y):
             for x in range(0, min(self.rows*base_sprite_x, self.displaySize[0]), base_sprite_x):
@@ -168,6 +178,7 @@ class Game(GameState):
                                    max_x=self.displaySize[0],
                                    max_y=self.displaySize[1])
                 invader1.add(self.aliens)
+                invader1.add(self.allsprites)
             offset = not offset
 
 if __name__ == "__main__":
