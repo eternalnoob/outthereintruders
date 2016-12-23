@@ -13,6 +13,8 @@ white = (255,255,255)
 black = (0,0,0)
 scale = 5
 spriteimg = pygame.transform.scale(pygame.image.load('sprite1.png'), (int(32 * scale), int(32 * scale)))
+
+
 DEFAULT_WIDTH = 1920
 DEFAULT_HEIGHT = 1080
 base_sprite_x = 150
@@ -136,10 +138,11 @@ class Projectile(Sprite):
         self.y -= self.movespeed * (delta/1000) * self.scale
         self.rect.y = int(self.y)
 
-    def update(self, delta):
+    def update(self, delta, oob_check):
         self.image = self.sprites[self.count % len(self.sprites)]
         self.move(delta)
         self.count += 1
+        oob_check(self)
 
 class EnemyProjectile(Projectile):
 
@@ -218,14 +221,12 @@ class Game(GameState):
                     sys.exit()
                     pygame.display.update()
                 elif event.type == UPDATE_GAME:
-                    self.clear_unneeded()
                     self.move_aliens()
                     self.alien_shoots(3)
                     self.shootcounter.incr()
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         if self.shootcounter.checkTime():
-                            print("ughuuuu")
                             self.shootcounter.reset()
                             self.player_fire()
 
@@ -237,10 +238,6 @@ class Game(GameState):
 
             self.clock.tick()
             pygame.time.wait(20)
-
-    def clear_unneeded(self):
-        print('')
-
 
     def player_fire(self):
         prj = Projectile(spritepack=self.projsprites,
@@ -286,7 +283,7 @@ class Game(GameState):
 
     def update_projectile(self):
         self.playerprj.clear(self.display, self.bg)
-        self.playerprj.update(self.clock.get_time())
+        self.playerprj.update(self.clock.get_time(), self.is_out_bounds)
         if pygame.sprite.groupcollide(self.playerprj, self.aliens, True, True, collided=self.does_collide):
             self.aliens.clear(self.display, self.bg)
             pygame.display.update(self.aliens.draw(self.display))
@@ -295,7 +292,7 @@ class Game(GameState):
 
     def update_enemy_prj(self):
         self.enemyprj.clear(self.display, self.bg)
-        self.enemyprj.update(self.clock.get_time())
+        self.enemyprj.update(self.clock.get_time(), self.is_out_bounds)
         if pygame.sprite.groupcollide(self.enemyprj, self.pg, True, False, collided=self.enemy_proj_hit):
             self.enemyprj.clear(self.display, self.bg)
             self.enemyprj.update(self.clock.get_time())
@@ -306,10 +303,10 @@ class Game(GameState):
         y = self.displaySize[1]-200
         if self.oldscore != self.score:
             self.generate_score_text()
-            self.oldscore = self.score
-            self.display.fill(pygame.Color("black"), (x, y, 300, 50))
-            self.display.blit(self.score_text, (x, y))
-            pygame.display.update()
+        self.oldscore = self.score
+        self.display.fill((0,0,0), (x, y, 300, 50))
+        self.display.blit(self.score_text, (x, y))
+        pygame.display.update()
 
     def move_aliens(self):
         self.aliens.clear(self.display, self.bg)
@@ -324,6 +321,13 @@ class Game(GameState):
             shooting_alien = choice(alienlist)
             self.enemy_fire(shooting_alien)
         self.count = self.count % period
+
+    def is_out_bounds(self, sprite):
+        if 0 <= sprite.rect.x  <= self.displaySize[0] and 0 <= sprite.rect.y <= self.displaySize[1]:
+            return False
+        else:
+            sprite.kill()
+            return True
 
 
     def setup_sprites(self):
