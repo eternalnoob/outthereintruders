@@ -1,4 +1,5 @@
 import pygame
+from random import choice
 import  sys
 from pygame.locals import *
 from pygame.sprite import Sprite, Group
@@ -28,15 +29,14 @@ def get_sprites():
     sprite_locs.append((20, 14, 109, 80))
     sprite_locs.append((160, 15, 115, 80))
     sprite_locs.append((310, 15, 85, 80))
-    images = invaders_sheet.images_at(sprite_locs, colorkey=(0,0,0,0))
+    images = invaders_sheet.images_at(sprite_locs,colorkey=-1)
 
     projectile = []
     project_sheet = Sheet('projectile.png')
     for y in range(0,128,32):
-        for x in project_sheet.load_strip((0, y, 32, 32), 4, colorkey=(0,0,0,0)):
+        for x in project_sheet.load_strip((0, y, 32, 32), 4, colorkey=-1):
             projectile.append(x)
-
-    for x in project_sheet.load_strip((0, 128, 32, 32), 1, colorkey=(0,0,0,0)):
+    for x in project_sheet.load_strip((0, 128, 32, 32), 1, colorkey=-1):
         projectile.append(x)
 
     return {"chars": images, "projspr": projectile}
@@ -55,8 +55,17 @@ def check_pressed():
         x += 1
     return (x, y)
 
+class SpritePropMix(object):
+    @property
+    def middle(self):
+        return self.rect.x
 
-class Player(Sprite):
+    @property
+    def top(self):
+        return self.rect.y - self.rect.height/2
+
+
+class Player(Sprite, SpritePropMix):
     def __init__(self, image=spriteimg, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=60):
         pygame.sprite.Sprite.__init__(self)
         self.x = x
@@ -81,17 +90,7 @@ class Player(Sprite):
     def getpos(self):
         return (self.rect.x, self.rec.y)
 
-    @property
-    def middle(self):
-        return self.rect.x
-
-    @property
-    def top(self):
-        return self.rect.y - self.rect.height/2
-
-
-
-class Invader(Sprite):
+class Invader(Sprite, SpritePropMix):
     def test(self):
         print("x")
 
@@ -115,10 +114,10 @@ class Invader(Sprite):
         return (self.x, self.y)
 
 class Projectile(Sprite):
-    def __init__(self, spritepack=None, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=80):
+    def __init__(self, spritepack=None, max_x=1920, max_y=1080, x=0, y=0, scale=1, movespeed=80,
+                 color=(0,0,0)):
         pygame.sprite.Sprite.__init__(self)
         self.scale = scale
-        print(scale)
         self.sprites = []
         for img in spritepack:
             self.sprites.append(pygame.transform.scale(img, (int(img.get_rect().width*self.scale), int(img.get_rect(
@@ -133,11 +132,20 @@ class Projectile(Sprite):
         self.count = 0
         self.movespeed = movespeed
 
-    def update(self, delta):
-        self.image = self.sprites[self.count % len(self.sprites)]
+    def move(self, delta):
         self.y -= self.movespeed * (delta/1000) * self.scale
         self.rect.y = int(self.y)
+
+    def update(self, delta):
+        self.image = self.sprites[self.count % len(self.sprites)]
+        self.move(delta)
         self.count += 1
+
+class EnemyProjectile(Projectile):
+
+    def move(self, delta):
+        self.y += self.movespeed * (delta/1000) * self.scale
+        self.rect.y = int(self.y)
 
 class GameState(object):
     def __init__(self):
@@ -152,6 +160,26 @@ class GameState(object):
         self.clock = pygame.time.Clock()
         self.scale = 3
         self.pg = pygame.sprite.RenderUpdates()
+
+class CountDown(object):
+    def __init__(self, period):
+        self.count = 0
+        self.period = period
+        self.isTime = False
+
+    def incr(self):
+        self.count += 1
+        if self.count >= self.period:
+            self.isTime = True
+        else:
+            self.isTime = False
+        self.count = self.count % self.period
+
+    def reset(self):
+        self.count = 0
+
+    def checkTime(self):
+        return self.isTime is True
 
 class Game(GameState):
     def __init__(self):
@@ -169,38 +197,65 @@ class Game(GameState):
         self.projsprites = sprites['projspr']
         self.player = None
         self.pg = pygame.sprite.RenderUpdates()
-        self.allsprites = pygame.sprite.RenderUpdates()
         self.playerprj = pygame.sprite.RenderUpdates()
         self.score = 0
         self.oldscore = -1
-        self.font = pygame.font.SysFont('Arial', 25)
+        self.font = pygame.font.SysFont('Arial', 30)
         self.score_text = None
+        self.enemyprj = pygame.sprite.RenderUpdates()
+
+        self.shootcounter = CountDown(5)
+        self.count = 0
 
     def loop(self):
         self.move_aliens()
         self.update_player()
         while True:
+            self.count += 1
             for event in pygame.event.get():
                 if event.type == QUIT:
                     pygame.quit()
                     sys.exit()
                     pygame.display.update()
                 elif event.type == UPDATE_GAME:
+                    self.clear_unneeded()
                     self.move_aliens()
+                    self.alien_shoots(3)
+                    self.shootcounter.incr()
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
-                        prj = Projectile(spritepack=self.projsprites,
-                                         x=self.player.middle,
-                                         y=self.player.top,
-                                         scale=self.player.scale)
-                        prj.add(self.playerprj)
+                        if self.shootcounter.checkTime():
+                            print("ughuuuu")
+                            self.shootcounter.reset()
+                            self.player_fire()
 
+            # Projectiles move more than the rest of things
             self.update_projectile()
+            self.update_enemy_prj()
             self.update_player()
             self.update_score_display()
 
             self.clock.tick()
             pygame.time.wait(20)
+
+    def clear_unneeded(self):
+        print('')
+
+
+    def player_fire(self):
+        prj = Projectile(spritepack=self.projsprites,
+                         x=self.player.middle,
+                         y=self.player.top,
+                         scale=self.player.scale,
+                         color=(255,255,255))
+        prj.add(self.playerprj)
+
+    def enemy_fire(self, enemy):
+        prj = EnemyProjectile(spritepack=self.projsprites,
+                              x= enemy.middle, y=enemy.top,
+                              scale=self.player.scale,
+                              color=(255,255,0))
+        prj.add(self.enemyprj)
 
     def run(self):
         self.setup_sprites()
@@ -222,6 +277,13 @@ class Game(GameState):
             print(self.score)
         return a
 
+    def enemy_proj_hit(self, x, y):
+        a = pygame.sprite.collide_mask(x, y)
+        if a:
+            self.score -= 100
+            print(self.score)
+        return a
+
     def update_projectile(self):
         self.playerprj.clear(self.display, self.bg)
         self.playerprj.update(self.clock.get_time())
@@ -231,29 +293,44 @@ class Game(GameState):
             self.playerprj.clear(self.display, self.bg)
         pygame.display.update(self.playerprj.draw(self.display))
 
+    def update_enemy_prj(self):
+        self.enemyprj.clear(self.display, self.bg)
+        self.enemyprj.update(self.clock.get_time())
+        if pygame.sprite.groupcollide(self.enemyprj, self.pg, True, False, collided=self.enemy_proj_hit):
+            self.enemyprj.clear(self.display, self.bg)
+            self.enemyprj.update(self.clock.get_time())
+        pygame.display.update(self.enemyprj.draw(self.display))
+
     def update_score_display(self):
         x = 0
         y = self.displaySize[1]-200
         if self.oldscore != self.score:
             self.generate_score_text()
             self.oldscore = self.score
-            self.display.fill(pygame.Color("black"), (x, y, 110, 40))
+            self.display.fill(pygame.Color("black"), (x, y, 300, 50))
             self.display.blit(self.score_text, (x, y))
             pygame.display.update()
-
 
     def move_aliens(self):
         self.aliens.clear(self.display, self.bg)
         self.aliens.update()
         pygame.display.update(self.aliens.draw(self.display))
+
         pygame.time.set_timer(UPDATE_GAME, int(RAW_TIMESTEP*.5))
 
+    def alien_shoots(self, period):
+        if self.count % period == 0:
+            alienlist = list([x for x in self.aliens])
+            shooting_alien = choice(alienlist)
+            self.enemy_fire(shooting_alien)
+        self.count = self.count % period
+
+
     def setup_sprites(self):
-        self.player = Player(x=self.displaySize[0]//2, y=self.displaySize[1]//2*1.7,
+        self.player = Player(x=self.displaySize[0]//2, y=int(self.displaySize[1]//2*1.7),
                              image=self.charsprites[2], max_x=self.displaySize[0], max_y=self.displaySize[1],
                              scale=self.scale)
         self.player.add(self.pg)
-        self.player.add(self.allsprites)
         offset = False
         for y in range(0, min(self.rows*base_sprite_y, self.displaySize[1]), base_sprite_y):
             for x in range(0, min(self.rows*base_sprite_x, self.displaySize[0]), base_sprite_x):
@@ -261,14 +338,13 @@ class Game(GameState):
                     actualx = x + 75
                 else:
                     actualx = x
-                invader1 = Invader(image=self.charsprites[0],
+                invader1 = Invader(image=choice(self.charsprites),
                                    y=y,
                                    scale=self.scale,
                                    x=actualx,
                                    max_x=self.displaySize[0],
                                    max_y=self.displaySize[1])
                 invader1.add(self.aliens)
-                invader1.add(self.allsprites)
             offset = not offset
 
 if __name__ == "__main__":
