@@ -158,8 +158,8 @@ class GameState(object):
         self.display = None
         self.bg = None
         self.charsprites = None
-        self.rows = 5
-        self.cols = 7
+        self.rows = 12
+        self.cols = 10
         self.clock = pygame.time.Clock()
         self.scale = 3
         self.pg = pygame.sprite.RenderUpdates()
@@ -180,6 +180,7 @@ class CountDown(object):
 
     def reset(self):
         self.count = 0
+        self.isTime = self.count >= self.period
 
     def checkTime(self):
         return self.isTime is True
@@ -237,7 +238,7 @@ class Game(GameState):
             self.update_score_display()
 
             self.clock.tick()
-            pygame.time.wait(20)
+            pygame.time.wait(10)
 
     def player_fire(self):
         prj = Projectile(spritepack=self.projsprites,
@@ -282,20 +283,23 @@ class Game(GameState):
         return a
 
     def update_projectile(self):
-        self.playerprj.clear(self.display, self.bg)
+        self.clear_group(self.playerprj)
         self.playerprj.update(self.clock.get_time(), self.is_out_bounds)
         if pygame.sprite.groupcollide(self.playerprj, self.aliens, True, True, collided=self.does_collide):
-            self.aliens.clear(self.display, self.bg)
+            self.clear_group(self.aliens)
             pygame.display.update(self.aliens.draw(self.display))
-            self.playerprj.clear(self.display, self.bg)
+            self.clear_group(self.playerprj)
         pygame.display.update(self.playerprj.draw(self.display))
 
+    def clear_group(self, group):
+        group.clear(self.display, self.bg)
+
     def update_enemy_prj(self):
-        self.enemyprj.clear(self.display, self.bg)
+        self.clear_group(self.enemyprj)
         self.enemyprj.update(self.clock.get_time(), self.is_out_bounds)
         if pygame.sprite.groupcollide(self.enemyprj, self.pg, True, False, collided=self.enemy_proj_hit):
-            self.enemyprj.clear(self.display, self.bg)
-            self.enemyprj.update(self.clock.get_time())
+            self.clear_group(self.enemyprj)
+            self.enemyprj.update(self.clock.get_time(), self.is_out_bounds)
         pygame.display.update(self.enemyprj.draw(self.display))
 
     def update_score_display(self):
@@ -309,7 +313,7 @@ class Game(GameState):
         pygame.display.update()
 
     def move_aliens(self):
-        self.aliens.clear(self.display, self.bg)
+        self.clear_group(self.aliens)
         self.aliens.update()
         pygame.display.update(self.aliens.draw(self.display))
 
