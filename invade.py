@@ -20,6 +20,8 @@ UPDATE_PLAYER = pygame.USEREVENT + 1
 UPDATE_GAME = pygame.USEREVENT + 2
 CAN_SHOOT = pygame.USEREVENT + 3
 
+RAW_TIMESTEP = 500
+
 def get_sprites():
     sprite_locs = []
     invaders_sheet = Sheet('invaders.gif')
@@ -169,6 +171,10 @@ class Game(GameState):
         self.pg = pygame.sprite.RenderUpdates()
         self.allsprites = pygame.sprite.RenderUpdates()
         self.playerprj = pygame.sprite.RenderUpdates()
+        self.score = 0
+        self.oldscore = -1
+        self.font = pygame.font.SysFont('Arial', 25)
+        self.score_text = None
 
     def loop(self):
         self.move_aliens()
@@ -191,7 +197,7 @@ class Game(GameState):
 
             self.update_projectile()
             self.update_player()
-            #self.player.update(delta=self.clock.get_time())
+            self.update_score_display()
 
             self.clock.tick()
             pygame.time.wait(20)
@@ -200,23 +206,47 @@ class Game(GameState):
         self.setup_sprites()
         self.loop()
 
+    def generate_score_text(self):
+        self.score_text = self.font.render('Your Score: {}'.format(self.score), True, (255,0,0))
+
     def update_player(self):
         self.pg.clear(self.display, self.bg)
         self.pg.update(self.clock.get_time())
         pygame.display.update(self.pg.draw(self.display))
 
 
+    def does_collide(self, x, y):
+        a = pygame.sprite.collide_mask(x, y)
+        if a:
+            self.score += 100
+            print(self.score)
+        return a
+
     def update_projectile(self):
         self.playerprj.clear(self.display, self.bg)
         self.playerprj.update(self.clock.get_time())
+        if pygame.sprite.groupcollide(self.playerprj, self.aliens, True, True, collided=self.does_collide):
+            self.aliens.clear(self.display, self.bg)
+            pygame.display.update(self.aliens.draw(self.display))
+            self.playerprj.clear(self.display, self.bg)
         pygame.display.update(self.playerprj.draw(self.display))
-        pygame.sprite.groupcollide(self.playerprj, self.aliens, True, True, collided=pygame.sprite.collide_mask)
+
+    def update_score_display(self):
+        x = 0
+        y = self.displaySize[1]-200
+        if self.oldscore != self.score:
+            self.generate_score_text()
+            self.oldscore = self.score
+            self.display.fill(pygame.Color("black"), (x, y, 110, 40))
+            self.display.blit(self.score_text, (x, y))
+            pygame.display.update()
+
 
     def move_aliens(self):
         self.aliens.clear(self.display, self.bg)
         self.aliens.update()
         pygame.display.update(self.aliens.draw(self.display))
-        pygame.time.set_timer(UPDATE_GAME, 500)
+        pygame.time.set_timer(UPDATE_GAME, int(RAW_TIMESTEP*.5))
 
     def setup_sprites(self):
         self.player = Player(x=self.displaySize[0]//2, y=self.displaySize[1]//2*1.7,
